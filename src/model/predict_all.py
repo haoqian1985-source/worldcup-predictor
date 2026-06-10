@@ -1,4 +1,7 @@
-"""生成并保存全部 72 场小组赛预测，供 daily_update.py 每日复盘使用。"""
+"""生成并保存全部 72 场小组赛预测，供 daily_update.py 每日复盘使用。
+
+使用期望进球（λ）作为主要预测指标，而非四舍五入的整数比分。
+"""
 
 import json
 from pathlib import Path
@@ -7,7 +10,6 @@ from src.model.elo import EloCalculator
 from src.model.poisson import PoissonModel
 
 # 72 场小组赛赛程（12 组 × 6 场）
-# 数据来源：FIFA 2026 官方赛程
 SCHEDULE = {
     "A组": [
         ("Mexico", "South Korea", "2026-06-11"),
@@ -110,6 +112,24 @@ SCHEDULE = {
 PREDICTIONS_FILE = Path(__file__).parent / "predictions.json"
 
 
+def _score_label(ga: float, gb: float) -> str:
+    """Create a human-readable score string from expected goals."""
+    ra, rb = int(round(ga)), int(round(gb))
+    if abs(ga - ra) < 0.15 and abs(gb - rb) < 0.15:
+        return f"{ra}-{rb}"
+    return f"{ga:.1f}-{gb:.1f}"
+
+
+def _confidence_label(home_win: float, draw: float, away_win: float) -> str:
+    """Label the predicted result: 稳/略占优/势均/悬念."""
+    best = max(home_win, draw, away_win)
+    if best > 0.65:
+        return "稳" if best > 0.75 else "略占优"
+    elif best > 0.40:
+        return "势均"
+    return "悬念"
+
+
 def generate_all_predictions() -> list[dict]:
     """Generate predictions for all 72 group matches."""
     elo = EloCalculator()
@@ -121,10 +141,10 @@ def generate_all_predictions() -> list[dict]:
             elo_pred = elo.predict_match(team_a, team_b)
             poisson_pred = poisson.predict(team_a, team_b)
 
-            score_a = int(round(poisson_pred.home_goals_lambda))
-            score_b = int(round(poisson_pred.away_goals_lambda))
+            la = poisson_pred.home_goals_lambda
+            lb = poisson_pred.away_goals_lambda
 
-            # Predicted result based on highest probability, not rounded score
+            # Predicted result based on highest probability
             probs = {
                 "home_win": poisson_pred.home_win_prob,
                 "draw": poisson_pred.draw_prob,
@@ -132,25 +152,45 @@ def generate_all_predictions() -> list[dict]:
             }
             predicted_result = max(probs, key=probs.get)
 
+            # Top 3 most likely scores (no duplicate probabilities)
+            top_scores = []
+            seen_probs = set()
+            for s in poisson_pred.most_likely_scores:
+                if s.probability not in seen_probs and len(top_scores) < 3:
+                    top_scores.append({"score": s.score, "prob": round(s.probability, 4)})
+                    seen_probs.add(s.probability)
+
+            confidence = _confidence_label(
+                poisson_pred.home_win_prob,
+                poisson_pred.draw_prob,
+                poisson_pred.away_win_prob,
+            )
+
             predictions.append({
                 "group": group_name,
                 "team_a": team_a,
                 "team_b": team_b,
                 "date": date,
                 "predicted": {
-                    "score": f"{score_a}-{score_b}",
-                    "score_a": score_a,
-                    "score_b": score_b,
+                    # Expected goals (continuous, not rounded)
+                    "xg_a": round(la, 2),
+                    "xg_b": round(lb, 2),
+                    # Human-readable score (rounds if close to integer)
+                    "score": _score_label(la, lb),
+                    # Predicted result (home_win / draw / away_win)
                     "result": predicted_result,
+                    # Win/draw/loss probabilities
                     "home_win_prob": round(poisson_pred.home_win_prob, 4),
                     "draw_prob": round(poisson_pred.draw_prob, 4),
                     "away_win_prob": round(poisson_pred.away_win_prob, 4),
-                    "home_goals_lambda": poisson_pred.home_goals_lambda,
-                    "away_goals_lambda": poisson_pred.away_goals_lambda,
+                    # Over 2.5 goals probability
                     "over_2_5_prob": round(poisson_pred.over_2_5_prob, 4),
-                    "most_likely_score": poisson_pred.most_likely_scores[0].score,
+                    # Top 3 most likely scores
+                    "top_scores": top_scores,
+                    # Confidence label
+                    "confidence": confidence,
                 },
-                "actual": None,  # filled in by daily_update.py
+                "actual": None,
             })
 
     return predictions
@@ -193,27 +233,26 @@ def print_summary():
     for m in data["matches"]:
         if m["group"] != current_group:
             current_group = m["group"]
-            print(f"\n{'─' * 50}")
+            print(f"\n{'─' * 65}")
             print(f"  {current_group}")
-            print(f"{'─' * 50}")
+            print(f"{'─' * 65}")
 
         p = m["predicted"]
-        status = ""
+        probs = f"{p['home_win_prob']*100:.0f}%/{p['draw_prob']*100:.0f}%/{p['away_win_prob']*100:.0f}%"
+        scores_str = " | ".join(f"{s['score']}({s['prob']*100:.0f}%)" for s in p["top_scores"])
+        elo_a = __import__("src.model.data", fromlist=["get_elo"]).get_elo(m["team_a"])
+        elo_b = __import__("src.model.data", fromlist=["get_elo"]).get_elo(m["team_b"])
+
+        status_str = ""
         if m["actual"]:
             a = m["actual"]
-            actual_score = f"{a['score_a']}-{a['score_b']}"
-            if a["score_a"] == p["score_a"] and a["score_b"] == p["score_b"]:
-                status = " ✅ 准确"
-            elif (a["score_a"] > a["score_b"] and p["score_a"] > p["score_b"]) or \
-                 (a["score_a"] < a["score_b"] and p["score_a"] < p["score_b"]) or \
-                 (a["score_a"] == a["score_b"] and p["score_a"] == p["score_b"]):
-                status = " ⚠ 方向对"
-            else:
-                status = " ❌ 预测错"
+            actual_str = f"{a['score_a']}-{a['score_b']}"
+            from src.model.daily_update import _judge_match
+            tag, _ = _judge_match(p, a)
+            status_str = f" → 实际 {actual_str} {tag}"
 
-        actual_str = f" 实际: {m['actual']['score_a']}-{m['actual']['score_b']}{status}" if m["actual"] else ""
-        print(f"  {m['date']}  {m['team_a']:20s} vs {m['team_b']:20s}")
-        print(f"     预测: {p['score']}  ({p['home_win_prob']*100:.0f}%/{p['draw_prob']*100:.0f}%/{p['away_win_prob']*100:.0f}%){actual_str}")
+        print(f"  {m['date']}  {m['team_a']:20s} vs {m['team_b']:20s}{status_str}")
+        print(f"    期望进球 {p['xg_a']:.2f}-{p['xg_b']:.2f}  |  {probs}  |  [{p['confidence']}]  |  前3比分: {scores_str}")
 
 
 if __name__ == "__main__":
