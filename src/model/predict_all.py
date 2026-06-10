@@ -113,11 +113,8 @@ PREDICTIONS_FILE = Path(__file__).parent / "predictions.json"
 
 
 def _score_label(ga: float, gb: float) -> str:
-    """Create a human-readable score string from expected goals."""
-    ra, rb = int(round(ga)), int(round(gb))
-    if abs(ga - ra) < 0.15 and abs(gb - rb) < 0.15:
-        return f"{ra}-{rb}"
-    return f"{ga:.1f}-{gb:.1f}"
+    """Round expected goals to nearest integer for a clear predicted score."""
+    return f"{int(round(ga))}-{int(round(gb))}"
 
 
 def _confidence_label(home_win: float, draw: float, away_win: float) -> str:
@@ -252,7 +249,7 @@ def print_summary():
             status_str = f" → 实际 {actual_str} {tag}"
 
         print(f"  {m['date']}  {m['team_a']:20s} vs {m['team_b']:20s}{status_str}")
-        print(f"    期望进球 {p['xg_a']:.2f}-{p['xg_b']:.2f}  |  {probs}  |  [{p['confidence']}]  |  前3比分: {scores_str}")
+        print(f"    预测 {p['score']:>5s}  (λ={p['xg_a']:.2f}-{p['xg_b']:.2f})  |  {probs}  |  [{p['confidence']}]")
 
 
 if __name__ == "__main__":

@@ -79,7 +79,7 @@ def _judge_match(p: dict, a: dict) -> tuple[str, str]:
 def _match_label(p: dict) -> str:
     """Short summary of a prediction."""
     probs = f"{p['home_win_prob']*100:.0f}%/{p['draw_prob']*100:.0f}%/{p['away_win_prob']*100:.0f}%"
-    return f"λ={p['xg_a']:.2f}-{p['xg_b']:.2f}  {probs}  [{p.get('confidence', '?')}]"
+    return f"预测 {p['score']}  (λ={p['xg_a']:.2f}-{p['xg_b']:.2f})  {probs}  [{p.get('confidence', '?')}]"
 
 
 # ─── Input ────────────────────────────────────────────────────
@@ -202,6 +202,7 @@ def daily_report(date_str: str | None = None):
     if day_matches:
         table = Table(box=box.ROUNDED, header_style="bold")
         table.add_column("对阵", width=42)
+        table.add_column("预测比分", width=8)
         table.add_column("期望进球", width=12)
         table.add_column("概率", width=14)
         table.add_column("实际", width=6)
@@ -215,6 +216,7 @@ def daily_report(date_str: str | None = None):
             upset_note = "🔥冷门" if _is_upset(p, a) else ""
             table.add_row(
                 f"{m['team_a']} vs {m['team_b']}",
+                p["score"],
                 f"{p['xg_a']:.2f}-{p['xg_b']:.2f}",
                 f"{p['home_win_prob']*100:.0f}%/{p['draw_prob']*100:.0f}%/{p['away_win_prob']*100:.0f}%",
                 actual_s, tag, upset_note,
@@ -284,7 +286,7 @@ def generate_xiaohongshu_post(date_str: str | None = None) -> str:
         icon = "✅" if "准确" in tag else ("⚠️" if "方向" in tag else "❌")
         lines.append(
             f"{icon} {m['team_a']} vs {m['team_b']}: "
-            f"期望 {p['xg_a']:.2f}-{p['xg_b']:.2f} → 实际 {a['score_a']}-{a['score_b']}  {tag}"
+            f"预测 {p['score']} → 实际 {a['score_a']}-{a['score_b']}  {tag}"
         )
 
     if upsets:
