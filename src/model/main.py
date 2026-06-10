@@ -8,7 +8,7 @@ import sys
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from src.model.data import GROUPS, get_all_teams, INITIAL_ELO
+from src.model.data import GROUPS, get_all_teams
 from src.model.elo import EloCalculator
 from src.model.poisson import PoissonModel
 from src.model.monte_carlo import TournamentSimulator
@@ -31,8 +31,8 @@ def parse_args():
         epilog="""
 使用示例:
   # 单场预测
-  python main.py "巴西 vs 法国"
-  python main.py --team1 阿根廷 --team2 德国
+  python main.py "France vs Brazil"
+  python main.py --team1 Argentina --team2 Germany
 
   # 蒙特卡洛模拟（整个赛程）
   python main.py --simulate
@@ -41,10 +41,10 @@ def parse_args():
 
   # 查看信息
   python main.py --groups
-  python main.py --team 巴西
+  python main.py --team Brazil
         """,
     )
-    parser.add_argument("match", nargs="?", help="比赛对阵，格式如 '巴西 vs 法国'")
+    parser.add_argument("match", nargs="?", help="比赛对阵，格式如 'France vs Brazil'")
     parser.add_argument("--team1", help="球队 A")
     parser.add_argument("--team2", help="球队 B")
     parser.add_argument("--simulate", action="store_true",

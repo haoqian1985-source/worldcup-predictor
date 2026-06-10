@@ -1,72 +1,104 @@
-"""种子数据：球队 Elo 评分 + 2026 世界杯分组"""
+"""球队真实 Elo 数据 + 2026 世界杯实际分组（数据来源：Kaggle Elo Ratings Dataset）。"""
 
-# 初始 Elo 评分（基于 2025-2026 年真实实力）
-# 范围 1400-2100，越高越强
-INITIAL_ELO = {
-    # 第一档 — 超级强队
-    "阿根廷": 2080, "法国": 2060, "巴西": 2040, "英格兰": 2020,
-    "西班牙": 2000, "葡萄牙": 1990, "德国": 1970, "荷兰": 1960,
-    # 第二档 — 强队
-    "比利时": 1940, "克罗地亚": 1920, "意大利": 1910, "乌拉圭": 1900,
-    "哥伦比亚": 1880, "摩洛哥": 1870, "丹麦": 1860, "瑞士": 1850,
-    # 第三档 — 中坚
-    "日本": 1830, "塞内加尔": 1820, "墨西哥": 1810, "美国": 1800,
-    "波兰": 1790, "塞尔维亚": 1780, "尼日利亚": 1770, "韩国": 1760,
-    "厄瓜多尔": 1750, "伊朗": 1740, "喀麦隆": 1730, "加拿大": 1720,
-    "加纳": 1710, "威尔士": 1700, "突尼斯": 1690, "阿尔及利亚": 1680,
-    # 第四档 — 偏弱
-    "沙特阿拉伯": 1660, "澳大利亚": 1650, "哥斯达黎加": 1640,
-    "埃及": 1630, "捷克": 1610,
-    "土耳其": 1600, "瑞典": 1590, "挪威": 1580, "匈牙利": 1570,
-    "希腊": 1560, "斯洛伐克": 1550, "巴拿马": 1530, "新西兰": 1500,
-    "玻利维亚": 1480, "委内瑞拉": 1470, "伊拉克": 1450,
-    "阿联酋": 1440, "乌兹别克斯坦": 1430,
-}
+import logging
+import os
+import pickle
+import sys
+from pathlib import Path
 
-# 2026 世界杯 16 个小组（每组 3 队，前 2 名出线）
+logger = logging.getLogger(__name__)
+
+# 2026 世界杯 12 个小组（每组 4 队，前 2 名出线→24队+8个第三名晋级→32强）
+# 数据来源：openfootball/worldcup.json
 GROUPS = {
-    "A组": ["阿根廷", "韩国", "希腊"],
-    "B组": ["法国", "波兰", "巴拿马"],
-    "C组": ["巴西", "塞内加尔", "新西兰"],
-    "D组": ["英格兰", "日本", "斯洛伐克"],
-    "E组": ["西班牙", "美国", "阿联酋"],
-    "F组": ["葡萄牙", "墨西哥", "伊拉克"],
-    "G组": ["德国", "喀麦隆", "玻利维亚"],
-    "H组": ["荷兰", "厄瓜多尔", "委内瑞拉"],
-    "I组": ["比利时", "塞尔维亚", "乌兹别克斯坦"],
-    "J组": ["克罗地亚", "尼日利亚", "澳大利亚"],
-    "K组": ["意大利", "加拿大", "沙特阿拉伯"],
-    "L组": ["乌拉圭", "伊朗", "埃及"],
-    "M组": ["哥伦比亚", "瑞士", "匈牙利"],
-    "N组": ["摩洛哥", "加纳", "土耳其"],
-    "O组": ["丹麦", "威尔士", "捷克"],
-    "P组": ["阿尔及利亚", "突尼斯", "瑞典"],
+    "A组": ["Mexico", "South Korea", "Czech Republic", "South Africa"],
+    "B组": ["Canada", "Bosnia and Herzegovina", "Qatar", "Switzerland"],
+    "C组": ["Brazil", "Haiti", "Morocco", "Scotland"],
+    "D组": ["Australia", "Paraguay", "Turkey", "USA"],
+    "E组": ["Curacao", "Ecuador", "Germany", "Ivory Coast"],
+    "F组": ["Japan", "Netherlands", "Sweden", "Tunisia"],
+    "G组": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "H组": ["Cape Verde", "Saudi Arabia", "Spain", "Uruguay"],
+    "I组": ["France", "Iraq", "Norway", "Senegal"],
+    "J组": ["Algeria", "Argentina", "Austria", "Jordan"],
+    "K组": ["Colombia", "DR Congo", "Portugal", "Uzbekistan"],
+    "L组": ["Croatia", "England", "Ghana", "Panama"],
 }
 
-# 球队所属大洲（用于抽签限制等）
-TEAM_CONFEDERATIONS = {
-    "阿根廷": "CONMEBOL", "巴西": "CONMEBOL", "乌拉圭": "CONMEBOL",
-    "哥伦比亚": "CONMEBOL", "厄瓜多尔": "CONMEBOL", "玻利维亚": "CONMEBOL",
-    "委内瑞拉": "CONMEBOL",
-    "法国": "UEFA", "英格兰": "UEFA", "西班牙": "UEFA", "葡萄牙": "UEFA",
-    "德国": "UEFA", "荷兰": "UEFA", "比利时": "UEFA", "克罗地亚": "UEFA",
-    "意大利": "UEFA", "丹麦": "UEFA", "瑞士": "UEFA", "波兰": "UEFA",
-    "塞尔维亚": "UEFA", "威尔士": "UEFA", "捷克": "UEFA", "土耳其": "UEFA",
-    "瑞典": "UEFA", "挪威": "UEFA", "匈牙利": "UEFA", "希腊": "UEFA",
-    "斯洛伐克": "UEFA",
-    "日本": "AFC", "韩国": "AFC", "伊朗": "AFC", "沙特阿拉伯": "AFC",
-    "澳大利亚": "AFC", "伊拉克": "AFC", "阿联酋": "AFC", "乌兹别克斯坦": "AFC",
-    "塞内加尔": "CAF", "尼日利亚": "CAF", "喀麦隆": "CAF", "加纳": "CAF",
-    "突尼斯": "CAF", "阿尔及利亚": "CAF", "埃及": "CAF", "摩洛哥": "CAF",
-    "墨西哥": "CONCACAF", "美国": "CONCACAF", "加拿大": "CONCACAF",
-    "哥斯达黎加": "CONCACAF", "巴拿马": "CONCACAF",
-    "新西兰": "OFC",
-}
+
+def _get_this_dir() -> Path:
+    """Get the directory where fetch_elo.py should save data."""
+    return Path(__file__).parent
+
+
+# Cache file for Elo ratings
+_ELO_CACHE_FILE = _get_this_dir() / ".elo_cache.pkl"
+
+
+def _get_default_ratings() -> dict[str, int]:
+    """Fallback Elo ratings if Kaggle data can't be loaded."""
+    return {
+        "Algeria": 1726, "Argentina": 2113, "Australia": 1774,
+        "Austria": 1818, "Belgium": 1849, "Bosnia and Herzegovina": 1571,
+        "Brazil": 1979, "Canada": 1802, "Cape Verde": 1560,
+        "Colombia": 1998, "Croatia": 1933, "Curacao": 1467,
+        "Czech Republic": 1731, "DR Congo": 1616, "Ecuador": 1933,
+        "Egypt": 1591, "England": 2042, "France": 2062,
+        "Germany": 1910, "Ghana": 1509, "Haiti": 1542,
+        "Iran": 1754, "Iraq": 1582, "Ivory Coast": 1607,
+        "Japan": 1878, "Jordan": 1687, "Mexico": 1835,
+        "Morocco": 1830, "Netherlands": 1959, "New Zealand": 1586,
+        "Norway": 1922, "Panama": 1742, "Paraguay": 1833,
+        "Portugal": 1976, "Qatar": 1427, "Saudi Arabia": 1612,
+        "Scotland": 1790, "Senegal": 1803, "South Africa": 1531,
+        "South Korea": 1784, "Spain": 2171, "Sweden": 1660,
+        "Switzerland": 1897, "Tunisia": 1641, "Turkey": 1880,
+        "USA": 1747, "Uruguay": 1890, "Uzbekistan": 1735,
+    }
+
+
+# Load ratings: try cache first, fall back to defaults
+_ELO_RATINGS: dict[str, int] | None = None
+
+
+def _load_ratings() -> dict[str, int]:
+    """Load Elo ratings from cache or fallback."""
+    global _ELO_RATINGS
+    if _ELO_RATINGS is not None:
+        return _ELO_RATINGS
+
+    cache_path = _ELO_CACHE_FILE
+    if cache_path.exists():
+        try:
+            with open(cache_path, "rb") as f:
+                _ELO_RATINGS = pickle.load(f)
+            logger.info("Loaded Elo ratings from cache (%d teams)", len(_ELO_RATINGS))
+            return _ELO_RATINGS
+        except Exception as e:
+            logger.warning("Failed to load Elo cache: %s", e)
+
+    _ELO_RATINGS = _get_default_ratings()
+    logger.info("Using default Elo ratings (%d teams)", len(_ELO_RATINGS))
+    return _ELO_RATINGS
+
+
+def save_ratings(ratings: dict[str, int]):
+    """Save Elo ratings to cache. Called by fetch_elo.py."""
+    global _ELO_RATINGS
+    _ELO_RATINGS = ratings
+    cache_path = _ELO_CACHE_FILE
+    try:
+        with open(cache_path, "wb") as f:
+            pickle.dump(ratings, f)
+        logger.info("Saved Elo ratings to cache (%d teams)", len(ratings))
+    except Exception as e:
+        logger.error("Failed to save Elo cache: %s", e)
 
 
 def get_elo(team_name: str) -> int:
-    """Get initial Elo rating for a team. Returns default 1500 if not found."""
-    return INITIAL_ELO.get(team_name, 1500)
+    """Get Elo rating for a team."""
+    ratings = _load_ratings()
+    return ratings.get(team_name, 1500)
 
 
 def get_all_teams() -> list[str]:

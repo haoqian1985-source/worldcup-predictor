@@ -9,3 +9,6 @@ __pycache__/
 
 # 系统
 .DS_Store
+
+# Elo 缓存（可由 fetch_elo.py 重新生成）
+.elo_cache.pkl
